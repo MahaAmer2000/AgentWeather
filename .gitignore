@@ -1,0 +1,18 @@
+# Virtual environment
+venv/
+.venv/
+
+# Environment variables and secrets
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Project data
+data/raw/
+data/processed/
+data/historical/
