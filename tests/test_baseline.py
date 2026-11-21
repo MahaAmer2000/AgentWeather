@@ -1,22 +1,35 @@
 
-from src.processing.preprocessing import prepare_training_data
 import pandas as pd
+
+from src.processing.preprocessing import prepare_training_data
 
 from src.models.baseline import (
     naive_baseline,
     wind_direction_baseline
 )
 
-# Load historical data
-df = pd.read_csv("data/historical/combined_historical.csv")
 
-# Prepare datasets
+# --------------------------------------------------
+# 1. Load historical data
+# --------------------------------------------------
+
+df = pd.read_csv(
+    "data/historical/combined_historical.csv"
+)
+
+
+# --------------------------------------------------
+# 2. Prepare datasets
+# --------------------------------------------------
+
 prepared_datasets = prepare_training_data(df)
 
-# Evaluate naive baseline for seven numerical targets
-baseline_results = {}
 
-for target in [
+# --------------------------------------------------
+# 3. Evaluate seven numerical targets
+# --------------------------------------------------
+
+TARGET_COLUMNS = [
     "us_aqi",
     "temperature_2m",
     "precipitation",
@@ -24,45 +37,57 @@ for target in [
     "relative_humidity_2m",
     "uv_index",
     "wind_speed_10m"
-]:
+]
+
+results = []
+
+for target in TARGET_COLUMNS:
+
+    print("\n" + "=" * 60)
+    print(f"Evaluating baseline for: {target}")
+    print("=" * 60)
 
     target_data = prepared_datasets[target]
 
-    results = naive_baseline(
-        target_data["X_test_unscaled"],
-        target_data["y_test"],
+    baseline_metrics = naive_baseline(
+        target_data["X_val_unscaled"],
+        target_data["y_val"],
         target
     )
 
-    baseline_results[target] = results
+    results.append({
+        "Target": target,
+        "MAE": baseline_metrics["MAE"],
+        "RMSE": baseline_metrics["RMSE"],
+        "R2": baseline_metrics["R2"]
+    })
 
-    print(f"\n{target}:")
-    print(results)
+    print(baseline_metrics)
 
 
-# -----------------------------------------
-# Evaluate wind direction baseline
-# -----------------------------------------
+# --------------------------------------------------
+# 4. Evaluate wind direction
+# --------------------------------------------------
 
-# Prepare original wind direction data
 raw_wind = (
     df.assign(time=pd.to_datetime(df["time"]))
       .set_index("time")["wind_direction_10m"]
 )
 
-# Get wind-direction test timestamps
 wind_data = prepared_datasets["wind_direction_10m"]
 
-test_timestamps = pd.to_datetime(
-    wind_data["test_timestamps"]
+val_timestamps = pd.to_datetime(
+    wind_data["val_timestamps"]
 )
 
-# Current direction = baseline prediction
-y_pred = raw_wind.reindex(test_timestamps).to_numpy()
+# Current wind direction = prediction
+y_pred = raw_wind.reindex(
+    val_timestamps
+).to_numpy()
 
-# Direction 24 hours later = actual target
+# Actual wind direction 24 hours ahead
 y_true = raw_wind.reindex(
-    test_timestamps + pd.Timedelta(hours=24)
+    val_timestamps + pd.Timedelta(hours=24)
 ).to_numpy()
 
 # Validate timestamp alignment
@@ -70,12 +95,48 @@ assert not pd.isna(y_pred).any()
 assert not pd.isna(y_true).any()
 assert len(y_pred) == len(y_true)
 
-# Evaluate circular errors
-wind_results = wind_direction_baseline(y_pred, y_true)
+wind_metrics = wind_direction_baseline(
+    y_pred,
+    y_true
+)
 
-print("\nwind_direction_10m:")
-print(wind_results)
+results.append({
+    "Target": "wind_direction_10m",
+    "MAE": wind_metrics["MAE"],
+    "RMSE": wind_metrics["RMSE"],
+    "R2": None
+})
+
+print("\nWind Direction Baseline")
+print("-----------------------")
+print(wind_metrics)
 
 
+# --------------------------------------------------
+# 5. Display final validation results
+# --------------------------------------------------
+
+results_df = pd.DataFrame(results)
+
+print("\n" + "=" * 75)
+print("FINAL BASELINE VALIDATION RESULTS")
+print("=" * 75)
+
+print(
+    results_df.to_string(
+        index=False,
+        float_format=lambda x: f"{x:.4f}"
+    )
+)
 
 
+# --------------------------------------------------
+# 6. Save validation results
+# --------------------------------------------------
+
+results_df.to_csv(
+    "results/baseline_validation.csv",
+    index=False
+)
+
+print("\nBaseline validation results saved successfully.")

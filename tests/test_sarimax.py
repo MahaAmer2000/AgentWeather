@@ -27,7 +27,7 @@ df = pd.read_csv(
 
 
 # --------------------------------------------------
-# 2. Run existing preprocessing pipeline
+# 2. Run preprocessing pipeline
 # --------------------------------------------------
 
 print("\nRunning existing preprocessing pipeline...")
@@ -38,7 +38,7 @@ print("\nPreprocessing completed successfully.")
 
 
 # --------------------------------------------------
-# 3. Define seven scalar targets
+# 3. Define scalar targets
 # --------------------------------------------------
 
 TARGET_COLUMNS = [
@@ -52,11 +52,13 @@ TARGET_COLUMNS = [
 ]
 
 
-# --------------------------------------------------
-# 4. Train and evaluate SARIMAX for seven targets
-# --------------------------------------------------
-
+# Store results
 all_results = {}
+
+
+# --------------------------------------------------
+# 4. Train and evaluate seven scalar targets
+# --------------------------------------------------
 
 for target_column in TARGET_COLUMNS:
 
@@ -64,7 +66,6 @@ for target_column in TARGET_COLUMNS:
     print(f"Training SARIMAX for: {target_column}")
     print("=" * 60)
 
-    # Get prepared dataset
     target_data = prepared_datasets[target_column]
 
     train_timestamps = pd.DatetimeIndex(
@@ -86,7 +87,6 @@ for target_column in TARGET_COLUMNS:
         train_timestamps.min():train_timestamps.max()
     ].asfreq("h")
 
-    # Validate training period
     assert len(train) > 0
     assert train.index.is_monotonic_increasing
     assert train.index.is_unique
@@ -138,19 +138,23 @@ for target_column in TARGET_COLUMNS:
     assert not y_val_true.isna().any()
 
     # Evaluate model
-    results = evaluate_sarimax_model(
+    metrics = evaluate_sarimax_model(
         y_val_true.to_numpy(),
         sarimax_predictions
     )
 
-    all_results[target_column] = results
+    all_results[target_column] = {
+        "MAE": metrics["MAE"],
+        "RMSE": metrics["RMSE"],
+        "R2": metrics["R2"]
+    }
 
     print(f"\n{target_column} SARIMAX Validation Results:")
-    print(results)
+    print(metrics)
 
 
 # --------------------------------------------------
-# 5. Train and evaluate SARIMAX for wind direction
+# 5. Train and evaluate wind direction
 # --------------------------------------------------
 
 print("\n" + "=" * 60)
@@ -173,7 +177,7 @@ wind_series = prepare_sarimax_data(
     "wind_direction_10m"
 )
 
-# Encode wind direction using existing preprocessing function
+# Encode wind direction
 encoded_wind = encode_wind_direction_target(
     wind_series
 )
@@ -200,21 +204,21 @@ train_cos = cos_series.loc[
 print("\nTraining observations:", len(train_sin))
 print("Validation forecast origins:", len(val_timestamps))
 
-# Train sine SARIMAX
+# Train sine model
 print("\nTraining sine SARIMAX model...")
 
 sin_model = train_sarimax_model(train_sin)
 
 print("Sine model trained successfully.")
 
-# Train cosine SARIMAX
+# Train cosine model
 print("\nTraining cosine SARIMAX model...")
 
 cos_model = train_sarimax_model(train_cos)
 
 print("Cosine model trained successfully.")
 
-# Generate rolling validation predictions
+# Generate rolling predictions
 print("\nGenerating sine predictions...")
 
 sin_predictions = rolling_sarimax_predictions(
@@ -242,7 +246,7 @@ wind_predictions = decode_wind_direction_prediction(
     wind_component_predictions
 )
 
-# Retrieve actual wind directions 24 hours ahead
+# Retrieve actual directions 24 hours ahead
 val_target_timestamps = (
     val_timestamps + pd.Timedelta(hours=24)
 )
@@ -254,6 +258,7 @@ y_val_true = wind_series.reindex(
 # Validate predictions and actual values
 assert len(wind_predictions) == len(y_val_true)
 assert not np.isnan(y_val_true).any()
+assert not np.isnan(wind_predictions).any()
 
 # Calculate circular errors
 wind_errors = calculate_wind_direction_errors(
@@ -261,10 +266,10 @@ wind_errors = calculate_wind_direction_errors(
     wind_predictions
 )
 
-# Calculate wind-direction metrics
 wind_results = {
     "MAE": np.mean(np.abs(wind_errors)),
-    "RMSE": np.sqrt(np.mean(wind_errors ** 2))
+    "RMSE": np.sqrt(np.mean(wind_errors ** 2)),
+    "R2": None
 }
 
 all_results["wind_direction_10m"] = wind_results
@@ -274,15 +279,40 @@ print(wind_results)
 
 
 # --------------------------------------------------
-# 6. Display consolidated results
+# 6. Create consolidated results DataFrame
 # --------------------------------------------------
 
-print("\n" + "=" * 60)
+results_df = (
+    pd.DataFrame.from_dict(all_results, orient="index")
+    .reset_index()
+    .rename(columns={"index": "Target"})
+)
+
+
+# --------------------------------------------------
+# 7. Display final results
+# --------------------------------------------------
+
+print("\n" + "=" * 75)
 print("FINAL SARIMAX VALIDATION RESULTS")
-print("=" * 60)
+print("=" * 75)
 
-results_df = pd.DataFrame(all_results).T
+print(
+    results_df.to_string(
+        index=False,
+        float_format=lambda x: f"{x:.4f}"
+    )
+)
 
-print(results_df)
 
-print("\nSARIMAX evaluation completed for all eight targets.")
+# --------------------------------------------------
+# 8. Save validation results
+# --------------------------------------------------
+
+results_df.to_csv(
+    "results/sarimax_validation.csv",
+    index=False
+)
+
+print("\nSARIMAX validation results saved successfully.")
+
