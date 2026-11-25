@@ -19,3 +19,6 @@ data/historical/
 
 # Local cache
 .cache.sqlite
+
+# Recovery datasets
+data/recovery/
